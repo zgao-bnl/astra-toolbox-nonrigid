@@ -282,6 +282,9 @@
     <ClCompile Include="src\CudaBackProjectionAlgorithm3D.cpp">
       <Filter>CUDA\astra source</Filter>
     </ClCompile>
+    <ClCompile Include="src\CudaBackProjectionAlgorithm3D_DF.cpp">
+      <Filter>CUDA\astra source</Filter>
+    </ClCompile>
     <ClCompile Include="src\CudaCglsAlgorithm.cpp">
       <Filter>CUDA\astra source</Filter>
     </ClCompile>
@@ -316,6 +319,9 @@
       <Filter>CUDA\astra source</Filter>
     </ClCompile>
     <ClCompile Include="src\CudaForwardProjectionAlgorithm3D.cpp">
+      <Filter>CUDA\astra source</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CudaForwardProjectionAlgorithm3D_DF.cpp">
       <Filter>CUDA\astra source</Filter>
     </ClCompile>
     <ClCompile Include="src\CudaProjector2D.cpp">
@@ -369,6 +375,7 @@
       <Filter>Algorithms\headers</Filter>
     </ClInclude>
     <ClInclude Include="include\astra\CudaBackProjectionAlgorithm3D.h">
+    <ClInclude Include="include\astra\CudaBackProjectionAlgorithm3D_DF.h">
       <Filter>Algorithms\headers</Filter>
     </ClInclude>
     <ClInclude Include="include\astra\FilteredBackProjectionAlgorithm.h">
@@ -597,6 +604,9 @@
       <Filter>CUDA\astra headers</Filter>
     </ClInclude>
     <ClInclude Include="include\astra\CudaForwardProjectionAlgorithm3D.h">
+      <Filter>CUDA\astra headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\astra\CudaForwardProjectionAlgorithm3D_DF.h">
       <Filter>CUDA\astra headers</Filter>
     </ClInclude>
     <ClInclude Include="include\astra\CudaProjector2D.h">

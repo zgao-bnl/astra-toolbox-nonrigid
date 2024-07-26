@@ -121,6 +121,87 @@ __global__ void dev_par3D_BP(void* D_volData, unsigned int volPitch, cudaTexture
 		volData[((startZ+i)*dims.iVolY+Y)*volPitch+X] += Z[i] * fOutputScale;
 }
 
+template<unsigned int ZSIZE>
+__global__ void dev_par3D_BP_DF(void* D_volData, unsigned int volPitch, cudaTextureObject_t tex, cudaTextureObject_t texDx, cudaTextureObject_t texDy, cudaTextureObject_t texDz, int startAngle, int angleOffset, const SDimensions3D dims, float fOutputScale)
+{
+	float* volData = (float*)D_volData;
+
+	int endAngle = startAngle + g_anglesPerBlock;
+	if (endAngle > dims.iProjAngles - angleOffset)
+		endAngle = dims.iProjAngles - angleOffset;
+
+	// threadIdx: x = rel x
+	//            y = rel y
+
+	// blockIdx:  x = x + y
+	//            y = z
+
+
+	const int X = blockIdx.x % ((dims.iVolX+g_volBlockX-1)/g_volBlockX) * g_volBlockX + threadIdx.x;
+	const int Y = blockIdx.x / ((dims.iVolX+g_volBlockX-1)/g_volBlockX) * g_volBlockY + threadIdx.y;
+
+	if (X >= dims.iVolX)
+		return;
+	if (Y >= dims.iVolY)
+		return;
+
+	const int startZ = blockIdx.y * g_volBlockZ;
+
+	const float rDx = (float)dims.iDeformX/(float)dims.iVolX;
+	const float rDy = (float)dims.iDeformY/(float)dims.iVolY;
+	const float rDz = (float)dims.iDeformZ/(float)dims.iVolZ;
+
+	float fX = X - 0.5f*dims.iVolX + 0.5f;
+	float fY = Y - 0.5f*dims.iVolY + 0.5f;
+	float fZ = startZ - 0.5f*dims.iVolZ + 0.5f;
+
+	float dx = 0;
+	float dy = 0;
+	float dz = 0;
+
+	float Z[ZSIZE];
+	for(int i=0; i < ZSIZE; i++)
+		Z[i] = 0.0f;
+
+	{
+		float fAngle = startAngle + angleOffset + 0.5f;
+
+		for (int angle = startAngle; angle < endAngle; ++angle, fAngle += 1.0f)
+		{
+
+			float4 fCu = gC_C[angle].fNumU;
+			float4 fCv = gC_C[angle].fNumV;
+			float fS = gC_scale[angle];
+
+			float xD = (float)X*rDx + 0.5f;
+			float yD = (float)Y*rDy + 0.5f;
+			float zD = (float)startZ*rDz + 0.5f;
+
+			for (int idx = 0; idx < ZSIZE; ++idx) {
+
+				dx = tex3D<float>(texDx, xD, yD, zD+idx*rDz)/rDx;
+				dy = tex3D<float>(texDy, xD, yD, zD+idx*rDz)/rDy;
+				dz = tex3D<float>(texDz, xD, yD, zD+idx*rDz)/rDz;
+
+				float fU = fCu.w + (fX-dx) * fCu.x + (fY-dy) * fCu.y + (fZ+idx-dz) * fCu.z;
+				float fV = fCv.w + (fX-dx) * fCv.x + (fY-dy) * fCv.y + (fZ+idx-dz) * fCv.z;
+
+				float fVal = tex3D<float>(tex, fU, fAngle, fV);
+				Z[idx] += fVal * fS;
+
+			}
+
+		}
+	}
+
+	int endZ = ZSIZE;
+	if (endZ > dims.iVolZ - startZ)
+		endZ = dims.iVolZ - startZ;
+
+	for(int i=0; i < endZ; i++)
+		volData[((startZ+i)*dims.iVolY+Y)*volPitch+X] += Z[i] * fOutputScale;
+}
+
 // supersampling version
 __global__ void dev_par3D_BP_SS(void* D_volData, unsigned int volPitch, cudaTextureObject_t tex, int startAngle, int angleOffset, const SDimensions3D dims, int iRaysPerVoxelDim, float fOutputScale)
 {
@@ -288,6 +369,83 @@ bool Par3DBP_Array(cudaPitchedPtr D_volumeData,
 	return true;
 }
 
+
+bool Par3DBP_Array_DF(cudaPitchedPtr D_volumeData,
+                   cudaArray *D_projArray,
+				   cudaArray *D_deformxArray,
+				   cudaArray *D_deformyArray,
+				   cudaArray *D_deformzArray,
+                   const SDimensions3D& dims, const SPar3DProjection* angles,
+                   const SProjectorParams3D& params)
+{
+	cudaTextureObject_t D_texObj;
+	if (!createTextureObject3D(D_projArray, D_texObj))
+		return false;
+
+	cudaTextureObject_t D_texObjDx;
+	if (!createTextureObject3D(D_deformxArray, D_texObjDx))
+		return false;
+
+	cudaTextureObject_t D_texObjDy;
+	if (!createTextureObject3D(D_deformyArray, D_texObjDy))
+		return false;
+
+	cudaTextureObject_t D_texObjDz;
+	if (!createTextureObject3D(D_deformzArray, D_texObjDz))
+		return false;
+
+
+	float fOutputScale = params.fOutputScale * params.fVolScaleX * params.fVolScaleY * params.fVolScaleZ;
+
+	bool ok = true;
+
+	for (unsigned int th = 0; th < dims.iProjAngles; th += g_MaxAngles) {
+		unsigned int angleCount = g_MaxAngles;
+		if (th + angleCount > dims.iProjAngles)
+			angleCount = dims.iProjAngles - th;
+
+		ok = transferConstants(angles, angleCount, params);
+		if (!ok)
+			break;
+
+		dim3 dimBlock(g_volBlockX, g_volBlockY);
+
+		dim3 dimGrid(((dims.iVolX+g_volBlockX-1)/g_volBlockX)*((dims.iVolY+g_volBlockY-1)/g_volBlockY), (dims.iVolZ+g_volBlockZ-1)/g_volBlockZ);
+
+		// timeval t;
+		// tic(t);
+
+		for (unsigned int i = 0; i < angleCount; i += g_anglesPerBlock) {
+			// printf("Calling BP: %d, %dx%d, %dx%d to %p\n", i, dimBlock.x, dimBlock.y, dimGrid.x, dimGrid.y, (void*)D_volumeData.ptr); 
+			if (params.iRaysPerVoxelDim == 1) {
+				if (dims.iVolZ == 1) {
+					dev_par3D_BP_DF<1><<<dimGrid, dimBlock>>>(D_volumeData.ptr, D_volumeData.pitch/sizeof(float), D_texObj, D_texObjDx, D_texObjDy, D_texObjDz, i, th, dims, fOutputScale);
+				} else {
+					dev_par3D_BP_DF<g_volBlockZ><<<dimGrid, dimBlock>>>(D_volumeData.ptr, D_volumeData.pitch/sizeof(float), D_texObj, D_texObjDx, D_texObjDy, D_texObjDz, i, th, dims, fOutputScale);
+				}
+			} else
+				dev_par3D_BP_SS<<<dimGrid, dimBlock>>>(D_volumeData.ptr, D_volumeData.pitch/sizeof(float), D_texObj, i, th, dims, params.iRaysPerVoxelDim, fOutputScale);
+		}
+
+		// TODO: Consider not synchronizing here, if possible.
+		ok = checkCuda(cudaThreadSynchronize(), "cone_bp");
+		if (!ok)
+			break;
+
+		angles = angles + angleCount;
+		// printf("%f\n", toc(t));
+
+	}
+
+	cudaDestroyTextureObject(D_texObj);
+
+	cudaDestroyTextureObject(D_texObjDx);
+	cudaDestroyTextureObject(D_texObjDy);
+	cudaDestroyTextureObject(D_texObjDz);
+
+	return true;
+}
+
 bool Par3DBP(cudaPitchedPtr D_volumeData,
             cudaPitchedPtr D_projData,
             const SDimensions3D& dims, const SPar3DProjection* angles,
@@ -301,6 +459,39 @@ bool Par3DBP(cudaPitchedPtr D_volumeData,
 	bool ret = Par3DBP_Array(D_volumeData, cuArray, dims, angles, params);
 
 	cudaFreeArray(cuArray);
+
+	return ret;
+}
+
+bool Par3DBP_DF(cudaPitchedPtr D_volumeData,
+            cudaPitchedPtr D_projData,
+			cudaPitchedPtr D_deformxData,
+			cudaPitchedPtr D_deformyData,
+			cudaPitchedPtr D_deformzData,
+            const SDimensions3D& dims, const SPar3DProjection* angles,
+            const SProjectorParams3D& params)
+{
+	// transfer projections to array
+
+	cudaArray* cuArray = allocateProjectionArray(dims);
+	transferProjectionsToArray(D_projData, cuArray, dims);
+
+	cudaArray* cuArrayDx = allocateVolumeArray_DF(dims);
+	transferVolumeToArray_DF(D_deformxData, cuArrayDx, dims);
+
+	cudaArray* cuArrayDy = allocateVolumeArray_DF(dims);
+	transferVolumeToArray_DF(D_deformyData, cuArrayDy, dims);
+
+	cudaArray* cuArrayDz = allocateVolumeArray_DF(dims);
+	transferVolumeToArray_DF(D_deformzData, cuArrayDz, dims);
+
+	bool ret = Par3DBP_Array_DF(D_volumeData, cuArray, cuArrayDx, cuArrayDy, cuArrayDz, dims, angles, params);
+
+	cudaFreeArray(cuArray);
+
+	cudaFreeArray(cuArrayDx);
+	cudaFreeArray(cuArrayDy);
+	cudaFreeArray(cuArrayDz);
 
 	return ret;
 }

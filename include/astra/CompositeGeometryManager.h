@@ -87,6 +87,7 @@ public:
 		virtual void splitX(TPartList& out, size_t maxSize, size_t maxDim, int div) = 0;
 		virtual void splitY(TPartList& out, size_t maxSize, size_t maxDim, int div) = 0;
 		virtual void splitZ(TPartList& out, size_t maxSize, size_t maxDim, int div) = 0;
+		virtual void splitZ_DF(TPartList& out, size_t maxSize, size_t maxDim, int div) = 0;
 		virtual CPart* reduce(const CPart *other) = 0;
 		virtual void getDims(size_t &x, size_t &y, size_t &z) const = 0;
 		size_t getSize() const;
@@ -106,6 +107,7 @@ public:
 		virtual void splitX(TPartList& out, size_t maxSize, size_t maxDim, int div);
 		virtual void splitY(TPartList& out, size_t maxSize, size_t maxDim, int div);
 		virtual void splitZ(TPartList& out, size_t maxSize, size_t maxDim, int div);
+		virtual void splitZ_DF(TPartList& out, size_t maxSize, size_t maxDim, int div);
 		virtual CPart* reduce(const CPart *other);
 		virtual void getDims(size_t &x, size_t &y, size_t &z) const;
 
@@ -122,6 +124,7 @@ public:
 		virtual void splitX(TPartList& out, size_t maxSize, size_t maxDim, int div);
 		virtual void splitY(TPartList& out, size_t maxSize, size_t maxDim, int div);
 		virtual void splitZ(TPartList& out, size_t maxSize, size_t maxDim, int div);
+		virtual void splitZ_DF(TPartList& out, size_t maxSize, size_t maxDim, int div);
 		virtual CPart* reduce(const CPart *other);
 		virtual void getDims(size_t &x, size_t &y, size_t &z) const;
 
@@ -132,13 +135,17 @@ public:
 	public:
 		std::shared_ptr<CPart> pInput;
 		std::shared_ptr<CPart> pOutput;
+		std::shared_ptr<CPart> pDeformX;
+		std::shared_ptr<CPart> pDeformY;
+		std::shared_ptr<CPart> pDeformZ;
+		
 		CProjector3D *pProjector; // For a `global' geometry. It will not match
 		                          // the geometries of the input and output.
 
 		SFDKSettings FDKSettings;
 
 		enum {
-			JOB_FP, JOB_BP, JOB_FDK, JOB_NOP
+			JOB_FP, JOB_FP_DF, JOB_BP, JOB_BP_DF, JOB_FDK, JOB_NOP
 		} eType;
 		enum EMode {
 			MODE_ADD = 0, MODE_SET = 1
@@ -152,6 +159,8 @@ public:
 
 	bool doJobs(TJobList &jobs);
 
+	bool doJobs_DF(TJobList &jobs);
+
 	SJob createJobFP(CProjector3D *pProjector,
                      CFloat32VolumeData3D *pVolData,
                      CFloat32ProjectionData3D *pProjData,
@@ -161,6 +170,23 @@ public:
                      CFloat32ProjectionData3D *pProjData,
 	                 SJob::EMode eMode);
 
+	SJob createJobFP_DF(CProjector3D *pProjector,
+                     CFloat32VolumeData3D *pVolData,
+                     CFloat32ProjectionData3D *pProjData,
+                     CFloat32VolumeData3D *pDeformX,
+                     CFloat32VolumeData3D *pDeformY,
+                     CFloat32VolumeData3D *pDeformZ,
+	                 SJob::EMode eMode);
+
+	SJob createJobBP_DF(CProjector3D *pProjector,
+                     CFloat32VolumeData3D *pVolData,
+                     CFloat32ProjectionData3D *pProjData,
+                     CFloat32VolumeData3D *pDeformX,
+                     CFloat32VolumeData3D *pDeformY,
+                     CFloat32VolumeData3D *pDeformZ,
+	                 SJob::EMode eMode);
+
+
 	// Convenience functions for creating and running a single FP or BP job
 	bool doFP(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
 	          CFloat32ProjectionData3D *pProjData, SJob::EMode eMode = SJob::MODE_SET);
@@ -169,6 +195,13 @@ public:
 	bool doFDK(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
 	          CFloat32ProjectionData3D *pProjData, bool bShortScan,
 	          const float *pfFilter = 0, SJob::EMode eMode = SJob::MODE_SET);
+	
+	bool doFP_DF(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
+	          CFloat32ProjectionData3D *pProjData, CFloat32VolumeData3D *pDeformX, CFloat32VolumeData3D *pDeformY, CFloat32VolumeData3D *pDeformZ, SJob::EMode eMode = SJob::MODE_SET);
+	
+	bool doBP_DF(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
+	          CFloat32ProjectionData3D *pProjData, CFloat32VolumeData3D *pDeformX, CFloat32VolumeData3D *pDeformY, CFloat32VolumeData3D *pDeformZ, SJob::EMode eMode = SJob::MODE_SET);
+	
 
 	bool doFP(CProjector3D *pProjector, const std::vector<CFloat32VolumeData3D *>& volData, const std::vector<CFloat32ProjectionData3D *>& projData, SJob::EMode eMode = SJob::MODE_SET);
 	bool doBP(CProjector3D *pProjector, const std::vector<CFloat32VolumeData3D *>& volData, const std::vector<CFloat32ProjectionData3D *>& projData, SJob::EMode eMode = SJob::MODE_SET);
@@ -180,6 +213,7 @@ public:
 protected:
 
 	bool splitJobs(TJobSet &jobs, size_t maxSize, int div, TJobSet &split);
+	bool splitJobs_DF(TJobSet &jobs, size_t maxSize, int div, TJobSet &split);
 
 	std::vector<int> m_GPUIndices;
 	size_t m_iMaxSize;

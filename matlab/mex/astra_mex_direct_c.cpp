@@ -48,8 +48,10 @@ along with the ASTRA Toolbox. If not, see <http://www.gnu.org/licenses/>.
 #include "astra/Float32VolumeData3DMemory.h"
 
 #include "astra/CudaForwardProjectionAlgorithm3D.h"
+#include "astra/CudaForwardProjectionAlgorithm3D_DF.h"
 
 #include "astra/CudaBackProjectionAlgorithm3D.h"
+#include "astra/CudaBackProjectionAlgorithm3D_DF.h"
 
 using namespace std;
 using namespace astra;

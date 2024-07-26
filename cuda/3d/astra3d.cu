@@ -127,6 +127,28 @@ bool convertAstraGeometry_dims(const CVolumeGeometry3D* pVolGeom,
 	return true;
 }
 
+bool convertAstraGeometry_dims_DF(const CVolumeGeometry3D* pVolGeom,
+                               const CProjectionGeometry3D* pProjGeom,
+							   const CVolumeGeometry3D* pDeformGeom,
+                               SDimensions3D& dims)
+{
+	dims.iVolX = pVolGeom->getGridColCount();
+	dims.iVolY = pVolGeom->getGridRowCount();
+	dims.iVolZ = pVolGeom->getGridSliceCount();
+	dims.iDeformX = pDeformGeom->getGridColCount();
+	dims.iDeformY = pDeformGeom->getGridRowCount();
+	dims.iDeformZ = pDeformGeom->getGridSliceCount();
+	dims.iProjAngles = pProjGeom->getProjectionCount();
+	dims.iProjU = pProjGeom->getDetectorColCount();
+	dims.iProjV = pProjGeom->getDetectorRowCount();
+
+	if (dims.iVolX <= 0 || dims.iVolX <= 0 || dims.iVolX <= 0)
+		return false;
+	if (dims.iProjAngles <= 0 || dims.iProjU <= 0 || dims.iProjV <= 0)
+		return false;
+
+	return true;
+}
 
 bool convertAstraGeometry(const CVolumeGeometry3D* pVolGeom,
                           const CParallelProjectionGeometry3D* pProjGeom,

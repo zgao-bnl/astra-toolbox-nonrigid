@@ -278,6 +278,11 @@ bool convertAstraGeometry_dims(const CVolumeGeometry3D* pVolGeom,
                                const CProjectionGeometry3D* pProjGeom,
                                astraCUDA3d::SDimensions3D& dims);
 
+bool convertAstraGeometry_dims_DF(const CVolumeGeometry3D* pVolGeom,
+                               const CProjectionGeometry3D* pProjGeom,
+							   const CVolumeGeometry3D* pDeformGeom,
+                               astraCUDA3d::SDimensions3D& dims);
+
 bool convertAstraGeometry(const CVolumeGeometry3D* pVolGeom,
                           const CProjectionGeometry3D* pProjGeom,
                           SPar3DProjection*& pParProjs,

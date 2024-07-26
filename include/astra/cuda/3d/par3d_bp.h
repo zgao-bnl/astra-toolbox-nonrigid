@@ -35,8 +35,24 @@ _AstraExport bool Par3DBP_Array(cudaPitchedPtr D_volumeData,
                    const SDimensions3D& dims, const SPar3DProjection* angles,
                    const SProjectorParams3D& params);
 
+_AstraExport bool Par3DBP_Array_DF(cudaPitchedPtr D_volumeData,
+                   cudaArray *D_projArray,
+                   cudaArray *D_deformxArray,
+                   cudaArray *D_deformyArray,
+                   cudaArray *D_deformzArray,
+                   const SDimensions3D& dims, const SPar3DProjection* angles,
+                   const SProjectorParams3D& params);
+
 _AstraExport bool Par3DBP(cudaPitchedPtr D_volumeData,
              cudaPitchedPtr D_projData,
+             const SDimensions3D& dims, const SPar3DProjection* angles,
+             const SProjectorParams3D& params);
+         
+_AstraExport bool Par3DBP_DF(cudaPitchedPtr D_volumeData,
+             cudaPitchedPtr D_projData,
+             cudaPitchedPtr D_deformxData,
+             cudaPitchedPtr D_deformyData,
+             cudaPitchedPtr D_deformzData,
              const SDimensions3D& dims, const SPar3DProjection* angles,
              const SProjectorParams3D& params);
          

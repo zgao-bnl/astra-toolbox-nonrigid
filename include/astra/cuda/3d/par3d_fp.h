@@ -40,6 +40,14 @@ _AstraExport bool Par3DFP(cudaPitchedPtr D_volumeData,
             const SDimensions3D& dims, const SPar3DProjection* angles,
             const SProjectorParams3D& params);
 
+_AstraExport bool Par3DFP_DF(cudaPitchedPtr D_volumeData,
+            cudaPitchedPtr D_projData,
+            cudaPitchedPtr D_deformxData,
+            cudaPitchedPtr D_deformyData,
+            cudaPitchedPtr D_deformzData,
+            const SDimensions3D& dims, const SPar3DProjection* angles,
+            const SProjectorParams3D& params);
+
 _AstraExport bool Par3DFP_SumSqW(cudaPitchedPtr D_volumeData,
                     cudaPitchedPtr D_projData,
                     const SDimensions3D& dims, const SPar3DProjection* angles,

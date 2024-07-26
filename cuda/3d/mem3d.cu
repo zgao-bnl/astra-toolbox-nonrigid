@@ -256,6 +256,73 @@ bool FP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, con
 	return ok;
 }
 
+bool FP_DF(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, const astra::CVolumeGeometry3D* pVolGeom, MemHandle3D volData, const astra::CVolumeGeometry3D* pDeformGeom, MemHandle3D deformxData, MemHandle3D deformyData, MemHandle3D deformzData, int iDetectorSuperSampling, astra::Cuda3DProjectionKernel projKernel)
+{
+	assert(!projData.d->arr);
+	assert(!volData.d->arr);
+	assert(!deformxData.d->arr);
+	assert(!deformyData.d->arr);
+	assert(!deformzData.d->arr);
+	SDimensions3D dims;
+	SProjectorParams3D params;
+
+	bool ok = convertAstraGeometry_dims_DF(pVolGeom, pProjGeom, pDeformGeom, dims);
+	if (!ok)
+		return false;
+
+#if 1
+	params.iRaysPerDetDim = iDetectorSuperSampling;
+	if (iDetectorSuperSampling == 0)
+		return false;
+#else
+	astra::Cuda3DProjectionKernel projKernel = astra::ker3d_default;
+#endif
+
+
+	SPar3DProjection* pParProjs;
+	SConeProjection* pConeProjs;
+
+	ok = convertAstraGeometry(pVolGeom, pProjGeom,
+	                          pParProjs, pConeProjs,
+	                          params);
+
+	if (pParProjs) {
+#if 0
+		for (int i = 0; i < dims.iProjAngles; ++i) {
+			ASTRA_DEBUG("Vec: %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f\n",
+			    pParProjs[i].fRayX, pParProjs[i].fRayY, pParProjs[i].fRayZ,
+			    pParProjs[i].fDetSX, pParProjs[i].fDetSY, pParProjs[i].fDetSZ,
+			    pParProjs[i].fDetUX, pParProjs[i].fDetUY, pParProjs[i].fDetUZ,
+			    pParProjs[i].fDetVX, pParProjs[i].fDetVY, pParProjs[i].fDetVZ);
+		}
+#endif
+
+		switch (projKernel) {
+		case astra::ker3d_default:
+			ok &= Par3DFP_DF(volData.d->ptr, projData.d->ptr, deformxData.d->ptr, deformyData.d->ptr, deformzData.d->ptr, dims, pParProjs, params);
+			break;
+		case astra::ker3d_sum_square_weights:
+			ok &= Par3DFP_SumSqW(volData.d->ptr, projData.d->ptr, dims, pParProjs, params);
+			break;
+		default:
+			ok = false;
+		}
+	} else {
+		switch (projKernel) {
+		case astra::ker3d_default:
+			ok &= ConeFP(volData.d->ptr, projData.d->ptr, dims, pConeProjs, params);
+			break;
+		default:
+			ok = false;
+		}
+	}
+
+	delete[] pParProjs;
+	delete[] pConeProjs;
+
+	return ok;
+}
+
 bool BP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, const astra::CVolumeGeometry3D* pVolGeom, MemHandle3D volData, int iVoxelSuperSampling)
 {
 	assert(!volData.d->arr);
@@ -284,6 +351,48 @@ bool BP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, con
 			ok &= Par3DBP_Array(volData.d->ptr, projData.d->arr, dims, pParProjs, params);
 		else
 			ok &= Par3DBP(volData.d->ptr, projData.d->ptr, dims, pParProjs, params);
+	} else {
+		if (projData.d->arr)
+			ok &= ConeBP_Array(volData.d->ptr, projData.d->arr, dims, pConeProjs, params);
+		else
+			ok &= ConeBP(volData.d->ptr, projData.d->ptr, dims, pConeProjs, params);
+	}
+
+	delete[] pParProjs;
+	delete[] pConeProjs;
+
+	return ok;
+
+}
+
+bool BP_DF(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, const astra::CVolumeGeometry3D* pVolGeom, MemHandle3D volData, const astra::CVolumeGeometry3D* pDeformGeom, MemHandle3D deformxData, MemHandle3D deformyData, MemHandle3D deformzData, int iVoxelSuperSampling)
+{
+	assert(!volData.d->arr);
+	SDimensions3D dims;
+	SProjectorParams3D params;
+
+	bool ok = convertAstraGeometry_dims_DF(pVolGeom, pProjGeom, pDeformGeom, dims);
+	if (!ok)
+		return false;
+
+#if 1
+	params.iRaysPerVoxelDim = iVoxelSuperSampling;
+#endif
+
+	SPar3DProjection* pParProjs;
+	SConeProjection* pConeProjs;
+
+	ok = convertAstraGeometry(pVolGeom, pProjGeom,
+	                          pParProjs, pConeProjs,
+	                          params);
+
+	params.bFDKWeighting = false;
+
+	if (pParProjs) {
+		if (projData.d->arr)
+			ok &= Par3DBP_Array_DF(volData.d->ptr, projData.d->arr, deformxData.d->arr, deformyData.d->arr, deformzData.d->arr, dims, pParProjs, params);
+		else
+			ok &= Par3DBP_DF(volData.d->ptr, projData.d->ptr, deformxData.d->ptr, deformyData.d->ptr, deformzData.d->ptr, dims, pParProjs, params);
 	} else {
 		if (projData.d->arr)
 			ok &= ConeBP_Array(volData.d->ptr, projData.d->arr, dims, pConeProjs, params);

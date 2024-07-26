@@ -321,6 +321,108 @@ bool CCompositeGeometryManager::splitJobs(TJobSet &jobs, size_t maxSize, int div
 	return true;
 }
 
+bool CCompositeGeometryManager::splitJobs_DF(TJobSet &jobs, size_t maxSize, int div, TJobSet &split)
+{
+	int maxBlockDim = astraCUDA3d::maxBlockDimension();
+	ASTRA_DEBUG("Found max block dim %d", maxBlockDim);
+
+	split.clear();
+
+	for (TJobSet::const_iterator i = jobs.begin(); i != jobs.end(); ++i)
+	{
+		CPart* pOutput = i->first;
+		const TJobList &L = i->second;
+
+		// 1. Split output part
+		// 2. Per sub-part:
+		//    a. reduce input part
+		//    b. split input part
+		//    c. create jobs for new (input,output) subparts
+
+		TPartList splitOutput;
+		pOutput->splitZ_DF(splitOutput, maxSize/3, UINT_MAX, div);
+
+
+		for (TJobList::const_iterator j = L.begin(); j != L.end(); ++j)
+		{
+			const SJob &job = *j;
+
+			for (TPartList::iterator i_out = splitOutput.begin();
+			     i_out != splitOutput.end(); ++i_out)
+			{
+				std::shared_ptr<CPart> outputPart = *i_out;
+
+				SJob newjob;
+				newjob.pOutput = outputPart;
+				newjob.eType = j->eType;
+				newjob.eMode = j->eMode;
+				newjob.pProjector = j->pProjector;
+				newjob.FDKSettings = j->FDKSettings;
+
+				CPart* input = job.pInput->reduce(outputPart.get());
+				CPart* deformx = job.pDeformX->reduce(outputPart.get());
+				CPart* deformy = job.pDeformY->reduce(outputPart.get());
+				CPart* deformz = job.pDeformZ->reduce(outputPart.get());
+
+				if (input->getSize() == 0) {
+					ASTRA_DEBUG("Empty input");
+					newjob.eType = SJob::JOB_NOP;
+					split[outputPart.get()].push_back(newjob);
+					continue;
+				}
+
+				size_t remainingSize = ( maxSize - outputPart->getSize() ) / 2;
+
+				TPartList splitInput;
+				TPartList splitDeformX;
+				TPartList splitDeformY;
+				TPartList splitDeformZ;
+				input->splitZ_DF(splitInput, remainingSize, maxBlockDim, 1);
+				deformx->splitZ_DF(splitDeformX, remainingSize, maxBlockDim, 1);
+				deformy->splitZ_DF(splitDeformY, remainingSize, maxBlockDim, 1);
+				deformz->splitZ_DF(splitDeformZ, remainingSize, maxBlockDim, 1);
+				delete input;
+				TPartList splitInput2;
+				for (TPartList::iterator i_in = splitInput.begin(); i_in != splitInput.end(); ++i_in) {
+					std::shared_ptr<CPart> inputPart = *i_in;
+					inputPart.get()->splitX(splitInput2, UINT_MAX, maxBlockDim, 1);
+				}
+				splitInput.clear();
+				for (TPartList::iterator i_in = splitInput2.begin(); i_in != splitInput2.end(); ++i_in) {
+					std::shared_ptr<CPart> inputPart = *i_in;
+					inputPart.get()->splitY(splitInput, UINT_MAX, maxBlockDim, 1);
+				}
+				splitInput2.clear();
+
+				ASTRA_DEBUG("Input split into %d parts", splitInput.size());
+
+				TPartList::iterator i_dfx = splitDeformX.begin();
+				TPartList::iterator i_dfy = splitDeformY.begin();
+				TPartList::iterator i_dfz = splitDeformZ.begin();
+
+				for (TPartList::iterator i_in = splitInput.begin();
+				     i_in != splitInput.end(); ++i_in)
+				{
+					newjob.pInput = *i_in;
+					newjob.pDeformX = *i_dfx;
+					newjob.pDeformY = *i_dfy;
+					newjob.pDeformZ = *i_dfz;
+
+					split[outputPart.get()].push_back(newjob);
+
+					// Second and later (input) parts should always be added to
+					// output of first (input) part.
+					newjob.eMode = SJob::MODE_ADD;
+				}
+
+			
+			}
+
+		}
+	}
+
+	return true;
+}
 
 static std::pair<double, double> reduceProjectionVertical(const CVolumeGeometry3D* pVolGeom, const CProjectionGeometry3D* pProjGeom)
 {
@@ -952,6 +1054,10 @@ void CCompositeGeometryManager::CVolumePart::splitZ(CCompositeGeometryManager::T
 	}
 }
 
+void CCompositeGeometryManager::CVolumePart::splitZ_DF(CCompositeGeometryManager::TPartList& out, size_t maxSize, size_t maxDim, int div)
+{
+	out.push_back(std::shared_ptr<CPart>(clone()));
+}
 CCompositeGeometryManager::CVolumePart* CCompositeGeometryManager::CVolumePart::clone() const
 {
 	return new CVolumePart(*this);
@@ -1134,6 +1240,11 @@ void CCompositeGeometryManager::CProjectionPart::splitZ(CCompositeGeometryManage
 
 }
 
+void CCompositeGeometryManager::CProjectionPart::splitZ_DF(CCompositeGeometryManager::TPartList &out, size_t maxSize, size_t maxDim, int div)
+{
+	out.push_back(std::shared_ptr<CPart>(clone()));
+}
+
 CCompositeGeometryManager::CProjectionPart* CCompositeGeometryManager::CProjectionPart::clone() const
 {
 	return new CProjectionPart(*this);
@@ -1173,6 +1284,70 @@ CCompositeGeometryManager::SJob CCompositeGeometryManager::createJobFP(CProjecto
 	return FP;
 }
 
+CCompositeGeometryManager::SJob CCompositeGeometryManager::createJobFP_DF(CProjector3D *pProjector,
+                                            CFloat32VolumeData3D *pVolData,
+                                            CFloat32ProjectionData3D *pProjData,
+											CFloat32VolumeData3D *pDeformX,
+											CFloat32VolumeData3D *pDeformY,
+											CFloat32VolumeData3D *pDeformZ,
+                                            SJob::EMode eMode)
+{
+	ASTRA_DEBUG("CCompositeGeometryManager::createJobFP");
+	// Create single job for FP
+
+	CVolumePart *input = new CVolumePart();
+	input->pData = pVolData;
+	input->subX = 0;
+	input->subY = 0;
+	input->subZ = 0;
+	input->pGeom = pVolData->getGeometry()->clone();
+	ASTRA_DEBUG("Main FP VolumePart -> %p", (void*)input);
+
+	CProjectionPart *output = new CProjectionPart();
+	output->pData = pProjData;
+	output->subX = 0;
+	output->subY = 0;
+	output->subZ = 0;
+	output->pGeom = pProjData->getGeometry()->clone();
+	ASTRA_DEBUG("Main FP ProjectionPart -> %p", (void*)output);
+
+	CVolumePart *deformx = new CVolumePart();
+	deformx->pData = pDeformX;
+	deformx->subX = 0;
+	deformx->subY = 0;
+	deformx->subZ = 0;
+	deformx->pGeom = pDeformX->getGeometry()->clone();
+	ASTRA_DEBUG("Main FP DeformXPart -> %p", (void*)deformx);
+
+	CVolumePart *deformy = new CVolumePart();
+	deformy->pData = pDeformY;
+	deformy->subX = 0;
+	deformy->subY = 0;
+	deformy->subZ = 0;
+	deformy->pGeom = pDeformY->getGeometry()->clone();
+	ASTRA_DEBUG("Main FP DeformYPart -> %p", (void*)deformy);
+
+	CVolumePart *deformz = new CVolumePart();
+	deformz->pData = pDeformZ;
+	deformz->subX = 0;
+	deformz->subY = 0;
+	deformz->subZ = 0;
+	deformz->pGeom = pDeformZ->getGeometry()->clone();
+	ASTRA_DEBUG("Main FP DeformZPart -> %p", (void*)deformz);
+
+	SJob FP_DF;
+	FP_DF.pInput = std::shared_ptr<CPart>(input);
+	FP_DF.pOutput = std::shared_ptr<CPart>(output);
+	FP_DF.pDeformX = std::shared_ptr<CPart>(deformx);
+	FP_DF.pDeformY = std::shared_ptr<CPart>(deformy);
+	FP_DF.pDeformZ = std::shared_ptr<CPart>(deformz);
+	FP_DF.pProjector = pProjector;
+	FP_DF.eType = SJob::JOB_FP_DF;
+	FP_DF.eMode = eMode;
+
+	return FP_DF;
+}
+
 CCompositeGeometryManager::SJob CCompositeGeometryManager::createJobBP(CProjector3D *pProjector,
                                             CFloat32VolumeData3D *pVolData,
                                             CFloat32ProjectionData3D *pProjData,
@@ -1205,6 +1380,65 @@ CCompositeGeometryManager::SJob CCompositeGeometryManager::createJobBP(CProjecto
 	return BP;
 }
 
+CCompositeGeometryManager::SJob CCompositeGeometryManager::createJobBP_DF(CProjector3D *pProjector,
+                                            CFloat32VolumeData3D *pVolData,
+                                            CFloat32ProjectionData3D *pProjData,
+                                            CFloat32VolumeData3D *pDeformX,
+                                            CFloat32VolumeData3D *pDeformY,
+                                            CFloat32VolumeData3D *pDeformZ,
+                                            SJob::EMode eMode)
+{
+	ASTRA_DEBUG("CCompositeGeometryManager::createJobBP_DF");
+	// Create single job for BP
+
+	CProjectionPart *input = new CProjectionPart();
+	input->pData = pProjData;
+	input->subX = 0;
+	input->subY = 0;
+	input->subZ = 0;
+	input->pGeom = pProjData->getGeometry()->clone();
+
+	CVolumePart *output = new CVolumePart();
+	output->pData = pVolData;
+	output->subX = 0;
+	output->subY = 0;
+	output->subZ = 0;
+	output->pGeom = pVolData->getGeometry()->clone();
+
+	CVolumePart *deformx = new CVolumePart();
+	deformx->pData = pDeformX;
+	deformx->subX = 0;
+	deformx->subY = 0;
+	deformx->subZ = 0;
+	deformx->pGeom = pDeformX->getGeometry()->clone();
+
+	CVolumePart *deformy = new CVolumePart();
+	deformy->pData = pDeformY;
+	deformy->subX = 0;
+	deformy->subY = 0;
+	deformy->subZ = 0;
+	deformy->pGeom = pDeformY->getGeometry()->clone();
+
+	CVolumePart *deformz = new CVolumePart();
+	deformz->pData = pDeformZ;
+	deformz->subX = 0;
+	deformz->subY = 0;
+	deformz->subZ = 0;
+	deformz->pGeom = pDeformZ->getGeometry()->clone();
+
+	SJob BP_DF;
+	BP_DF.pInput = std::shared_ptr<CPart>(input);
+	BP_DF.pOutput = std::shared_ptr<CPart>(output);
+	BP_DF.pDeformX = std::shared_ptr<CPart>(deformx);
+	BP_DF.pDeformY = std::shared_ptr<CPart>(deformy);
+	BP_DF.pDeformZ = std::shared_ptr<CPart>(deformz);
+	BP_DF.pProjector = pProjector;
+	BP_DF.eType = SJob::JOB_BP_DF;
+	BP_DF.eMode = eMode;
+
+	return BP_DF;
+}
+
 bool CCompositeGeometryManager::doFP(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
                                      CFloat32ProjectionData3D *pProjData, SJob::EMode eMode)
 {
@@ -1214,13 +1448,32 @@ bool CCompositeGeometryManager::doFP(CProjector3D *pProjector, CFloat32VolumeDat
 	return doJobs(L);
 }
 
-		bool CCompositeGeometryManager::doBP(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
+bool CCompositeGeometryManager::doFP_DF(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
+                                     CFloat32ProjectionData3D *pProjData, CFloat32VolumeData3D *pDeformX, CFloat32VolumeData3D *pDeformY, CFloat32VolumeData3D *pDeformZ, SJob::EMode eMode)
+{
+	TJobList L;
+	L.push_back(createJobFP_DF(pProjector, pVolData, pProjData, pDeformX, pDeformY, pDeformZ, eMode));
+
+	return doJobs_DF(L);
+}
+
+
+bool CCompositeGeometryManager::doBP(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
                                      CFloat32ProjectionData3D *pProjData, SJob::EMode eMode)
 {
 	TJobList L;
 	L.push_back(createJobBP(pProjector, pVolData, pProjData, eMode));
 
 	return doJobs(L);
+}
+
+bool CCompositeGeometryManager::doBP_DF(CProjector3D *pProjector, CFloat32VolumeData3D *pVolData,
+                                     CFloat32ProjectionData3D *pProjData, CFloat32VolumeData3D *pDeformX, CFloat32VolumeData3D *pDeformY, CFloat32VolumeData3D *pDeformZ, SJob::EMode eMode)
+{
+	TJobList L;
+	L.push_back(createJobBP_DF(pProjector, pVolData, pProjData, pDeformX, pDeformY, pDeformZ, eMode));
+
+	return doJobs_DF(L);
 }
 
 
@@ -1473,6 +1726,55 @@ static bool doJob(const CCompositeGeometryManager::TJobSet::const_iterator& iter
 			ASTRA_DEBUG("CCompositeGeometryManager::doJobs: FP done");
 		}
 		break;
+		case CCompositeGeometryManager::SJob::JOB_FP_DF:
+		{
+			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pInput.get()));
+			assert(dynamic_cast<CCompositeGeometryManager::CProjectionPart*>(j.pOutput.get()));
+			
+			size_t sdx, sdy, sdz;
+			j.pDeformX->getDims(sdx, sdy, sdz);
+
+			astraCUDA3d::SSubDimensions3D deformdims;
+			deformdims.nx = j.pDeformX->pData->getWidth();
+			deformdims.pitch = deformdims.nx;
+			deformdims.ny = j.pDeformX->pData->getHeight();
+			deformdims.nz = j.pDeformX->pData->getDepth();
+			deformdims.subnx = sdx;
+			deformdims.subny = sdy;
+			deformdims.subnz = sdz;
+			deformdims.subx = j.pDeformX->subX;
+			deformdims.suby = j.pDeformX->subY;
+			deformdims.subz = j.pDeformX->subZ;
+
+			CFloat32CustomGPUMemory *deformxMem = createGPUMemoryHandler(j.pDeformX->pData);
+			CFloat32CustomGPUMemory *deformyMem = createGPUMemoryHandler(j.pDeformY->pData);
+			CFloat32CustomGPUMemory *deformzMem = createGPUMemoryHandler(j.pDeformZ->pData);
+
+			ok = deformxMem->allocateGPUMemory(sdx, sdy, sdz, astraCUDA3d::INIT_NO);
+			if (!ok) ASTRA_ERROR("Error allocating GPU memory");
+			ok = deformyMem->allocateGPUMemory(sdx, sdy, sdz, astraCUDA3d::INIT_NO);
+			if (!ok) ASTRA_ERROR("Error allocating GPU memory");
+			ok = deformzMem->allocateGPUMemory(sdx, sdy, sdz, astraCUDA3d::INIT_NO);
+			if (!ok) ASTRA_ERROR("Error allocating GPU memory");
+			
+			ok = deformxMem->copyToGPUMemory(deformdims);
+			if (!ok) ASTRA_ERROR("Error copying input data to GPU");
+			ok = deformyMem->copyToGPUMemory(deformdims);
+			if (!ok) ASTRA_ERROR("Error copying input data to GPU");
+			ok = deformzMem->copyToGPUMemory(deformdims);
+			if (!ok) ASTRA_ERROR("Error copying input data to GPU");
+			
+			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pDeformX.get()));
+			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pDeformY.get()));
+			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pDeformZ.get()));
+			
+			ASTRA_DEBUG("CCompositeGeometryManager::doJobs: doing FP");
+
+			ok = astraCUDA3d::FP_DF(((CCompositeGeometryManager::CProjectionPart*)j.pOutput.get())->pGeom, dstMem->hnd, ((CCompositeGeometryManager::CVolumePart*)j.pInput.get())->pGeom, srcMem->hnd, ((CCompositeGeometryManager::CVolumePart*)j.pDeformX.get())->pGeom, deformxMem->hnd, deformyMem->hnd, deformzMem->hnd, detectorSuperSampling, projKernel);
+			if (!ok) ASTRA_ERROR("Error performing sub-FP");
+			ASTRA_DEBUG("CCompositeGeometryManager::doJobs: FP done");
+		}
+		break;
 		case CCompositeGeometryManager::SJob::JOB_BP:
 		{
 			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pOutput.get()));
@@ -1483,6 +1785,55 @@ static bool doJob(const CCompositeGeometryManager::TJobSet::const_iterator& iter
 			ok = astraCUDA3d::BP(((CCompositeGeometryManager::CProjectionPart*)j.pInput.get())->pGeom, srcMem->hnd, ((CCompositeGeometryManager::CVolumePart*)j.pOutput.get())->pGeom, dstMem->hnd, voxelSuperSampling);
 			if (!ok) ASTRA_ERROR("Error performing sub-BP");
 			ASTRA_DEBUG("CCompositeGeometryManager::doJobs: BP done");
+		}
+		break;
+		case CCompositeGeometryManager::SJob::JOB_BP_DF:
+		{
+			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pOutput.get()));
+			assert(dynamic_cast<CCompositeGeometryManager::CProjectionPart*>(j.pInput.get()));
+
+			size_t sdx, sdy, sdz;
+			j.pDeformX->getDims(sdx, sdy, sdz);
+
+			astraCUDA3d::SSubDimensions3D deformdims;
+			deformdims.nx = j.pDeformX->pData->getWidth();
+			deformdims.pitch = deformdims.nx;
+			deformdims.ny = j.pDeformX->pData->getHeight();
+			deformdims.nz = j.pDeformX->pData->getDepth();
+			deformdims.subnx = sdx;
+			deformdims.subny = sdy;
+			deformdims.subnz = sdz;
+			deformdims.subx = j.pDeformX->subX;
+			deformdims.suby = j.pDeformX->subY;
+			deformdims.subz = j.pDeformX->subZ;
+
+			CFloat32CustomGPUMemory *deformxMem = createGPUMemoryHandler(j.pDeformX->pData);
+			CFloat32CustomGPUMemory *deformyMem = createGPUMemoryHandler(j.pDeformY->pData);
+			CFloat32CustomGPUMemory *deformzMem = createGPUMemoryHandler(j.pDeformZ->pData);
+
+			ok = deformxMem->allocateGPUMemory(sdx, sdy, sdz, astraCUDA3d::INIT_NO);
+			if (!ok) ASTRA_ERROR("Error allocating GPU memory");
+			ok = deformyMem->allocateGPUMemory(sdx, sdy, sdz, astraCUDA3d::INIT_NO);
+			if (!ok) ASTRA_ERROR("Error allocating GPU memory");
+			ok = deformzMem->allocateGPUMemory(sdx, sdy, sdz, astraCUDA3d::INIT_NO);
+			if (!ok) ASTRA_ERROR("Error allocating GPU memory");
+			
+			ok = deformxMem->copyToGPUMemory(deformdims);
+			if (!ok) ASTRA_ERROR("Error copying input data to GPU");
+			ok = deformyMem->copyToGPUMemory(deformdims);
+			if (!ok) ASTRA_ERROR("Error copying input data to GPU");
+			ok = deformzMem->copyToGPUMemory(deformdims);
+			if (!ok) ASTRA_ERROR("Error copying input data to GPU");
+			
+			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pDeformX.get()));
+			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pDeformY.get()));
+			assert(dynamic_cast<CCompositeGeometryManager::CVolumePart*>(j.pDeformZ.get()));
+			
+			ASTRA_DEBUG("CCompositeGeometryManager::doJobs: doing BP_DF");
+
+			ok = astraCUDA3d::BP_DF(((CCompositeGeometryManager::CProjectionPart*)j.pInput.get())->pGeom, srcMem->hnd, ((CCompositeGeometryManager::CVolumePart*)j.pOutput.get())->pGeom, dstMem->hnd, ((CCompositeGeometryManager::CVolumePart*)j.pDeformX.get())->pGeom, deformxMem->hnd, deformyMem->hnd, deformzMem->hnd, voxelSuperSampling);
+			if (!ok) ASTRA_ERROR("Error performing sub-BP");
+			ASTRA_DEBUG("CCompositeGeometryManager::doJobs: BP_DF done");
 		}
 		break;
 		case CCompositeGeometryManager::SJob::JOB_FDK:
@@ -1725,6 +2076,76 @@ bool CCompositeGeometryManager::doJobs(TJobList &jobs)
 	return true;
 }
 
+bool CCompositeGeometryManager::doJobs_DF(TJobList &jobs)
+{
+	// TODO: Proper clean up if substeps fail (Or as proper as possible)
+
+	ASTRA_DEBUG("CCompositeGeometryManager::doJob_DF");
+
+	// Sort job list into job set by output part
+	TJobSet jobset;
+
+	for (TJobList::iterator i = jobs.begin(); i != jobs.end(); ++i) {
+		jobset[i->pOutput.get()].push_back(*i);
+	}
+
+	for (TJobSet::const_iterator iter = jobset.begin(); iter != jobset.end(); ++iter) {
+		doJob(iter);
+	}
+
+	return true;
+
+	size_t maxSize = m_iMaxSize;
+	if (maxSize == 0) {
+		// Get memory from first GPU. Not optimal...
+		if (!m_GPUIndices.empty())
+			astraCUDA3d::setGPUIndex(m_GPUIndices[0]);
+		maxSize = astraCUDA::availableGPUMemory();
+		if (maxSize == 0) {
+			ASTRA_WARN("Unable to get available GPU memory. Defaulting to 1GB.");
+			maxSize = 1024 * 1024 * 1024;
+		} else {
+			ASTRA_DEBUG("Detected %lu bytes of GPU memory", maxSize);
+		}
+	} else {
+		ASTRA_DEBUG("Set to %lu bytes of GPU memory", maxSize);
+	}
+	maxSize = (maxSize * 9) / 10;
+
+	maxSize /= sizeof(float);
+	int div = 1;
+	if (!m_GPUIndices.empty())
+		div = m_GPUIndices.size();
+
+	// Split jobs to fit
+	TJobSet split;
+	splitJobs_DF(jobset, maxSize, div, split);
+	jobset.clear();
+
+	if (m_GPUIndices.size() <= 1) {
+
+		// Run jobs
+		ASTRA_DEBUG("Running single-threaded");
+
+		if (!m_GPUIndices.empty())
+			astraCUDA3d::setGPUIndex(m_GPUIndices[0]);
+
+		for (TJobSet::const_iterator iter = split.begin(); iter != split.end(); ++iter) {
+			doJob(iter);
+		}
+
+	} else {
+
+		ASTRA_DEBUG("Running multi-threaded");
+
+		WorkQueue wq(split);
+
+		runWorkQueue(wq, m_GPUIndices);
+
+	}
+
+	return true;
+}
 
 
 

@@ -283,6 +283,24 @@ cudaArray* allocateVolumeArray(const SDimensions3D& dims)
 
 	return cuArray;
 }
+
+cudaArray* allocateVolumeArray_DF(const SDimensions3D& dims)
+{
+	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
+	cudaArray* cuArray;
+	cudaExtent extentA;
+	extentA.width = dims.iDeformX;
+	extentA.height = dims.iDeformY;
+	extentA.depth = dims.iDeformZ;
+
+	if (!checkCuda(cudaMalloc3DArray(&cuArray, &channelDesc, extentA), "allocateVolumeArray_DF 3D")) {
+		ASTRA_ERROR("Failed to allocate %dx%dx%d GPU array", dims.iDeformX, dims.iDeformY, dims.iDeformZ);
+		return 0;
+	}
+
+	return cuArray;
+}
+
 cudaArray* allocateProjectionArray(const SDimensions3D& dims)
 {
 	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
@@ -322,6 +340,30 @@ bool transferVolumeToArray(cudaPitchedPtr D_volumeData, cudaArray* array, const 
 	p.kind = cudaMemcpyDeviceToDevice;
 
 	return checkCuda(cudaMemcpy3D(&p), "transferVolumeToArray 3D");
+}
+
+bool transferVolumeToArray_DF(cudaPitchedPtr D_volumeData, cudaArray* array, const SDimensions3D& dims)
+{
+	cudaExtent extentA;
+	extentA.width = dims.iDeformX;
+	extentA.height = dims.iDeformY;
+	extentA.depth = dims.iDeformZ;
+
+	cudaMemcpy3DParms p;
+	cudaPos zp = {0, 0, 0};
+	p.srcArray = 0;
+	p.srcPos = zp;
+	p.srcPtr = D_volumeData;
+	p.dstArray = array;
+	p.dstPtr.ptr = 0;
+	p.dstPtr.pitch = 0;
+	p.dstPtr.xsize = 0;
+	p.dstPtr.ysize = 0;
+	p.dstPos = zp;
+	p.extent = extentA;
+	p.kind = cudaMemcpyDeviceToDevice;
+
+	return checkCuda(cudaMemcpy3D(&p), "transferVolumeToArray_DF 3D");
 }
 
 bool transferProjectionsToArray(cudaPitchedPtr D_projData, cudaArray* array, const SDimensions3D& dims)

@@ -47,6 +47,9 @@ struct SDimensions3D {
 	unsigned int iVolX;
 	unsigned int iVolY;
 	unsigned int iVolZ;
+	unsigned int iDeformX;
+	unsigned int iDeformY;
+	unsigned int iDeformZ;
 	unsigned int iProjAngles;
 	unsigned int iProjU; // number of detectors in the U direction
 	unsigned int iProjV; // number of detectors in the V direction

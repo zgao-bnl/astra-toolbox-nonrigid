@@ -110,7 +110,11 @@ bool copyIntoArray(MemHandle3D handle, MemHandle3D subdata, const SSubDimensions
 
 bool FP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, const astra::CVolumeGeometry3D* pVolGeom, MemHandle3D volData, int iDetectorSuperSampling, astra::Cuda3DProjectionKernel projKernel);
 
+bool FP_DF(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, const astra::CVolumeGeometry3D* pVolGeom, MemHandle3D volData, const astra::CVolumeGeometry3D* pDeformGeom, MemHandle3D deformxData, MemHandle3D deformyData, MemHandle3D deformzData, int iDetectorSuperSampling, astra::Cuda3DProjectionKernel projKernel);
+
 bool BP(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, const astra::CVolumeGeometry3D* pVolGeom, MemHandle3D volData, int iVoxelSuperSampling);
+
+bool BP_DF(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, const astra::CVolumeGeometry3D* pVolGeom, MemHandle3D volData, const astra::CVolumeGeometry3D* pDeformGeom, MemHandle3D deformxData, MemHandle3D deformyData, MemHandle3D deformzData, int iVoxelSuperSampling);
 
 bool FDK(const astra::CProjectionGeometry3D* pProjGeom, MemHandle3D projData, const astra::CVolumeGeometry3D* pVolGeom, MemHandle3D volData, bool bShortScan, const float *pfFilter = 0);
 

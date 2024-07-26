@@ -388,6 +388,12 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="src\CudaBackProjectionAlgorithm3D_DF.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="src\CudaCglsAlgorithm.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -455,6 +461,12 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\CudaForwardProjectionAlgorithm3D.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="src\CudaForwardProjectionAlgorithm3D_DF.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
@@ -573,6 +585,7 @@
     <ClInclude Include="include\astra\Config.h" />
     <ClInclude Include="include\astra\CudaBackProjectionAlgorithm.h" />
     <ClInclude Include="include\astra\CudaBackProjectionAlgorithm3D.h" />
+    <ClInclude Include="include\astra\CudaBackProjectionAlgorithm3D_DF.h" />
     <ClInclude Include="include\astra\CudaCglsAlgorithm.h" />
     <ClInclude Include="include\astra\CudaCglsAlgorithm3D.h" />
     <ClInclude Include="include\astra\CudaDartMaskAlgorithm.h" />
@@ -585,6 +598,7 @@
     <ClInclude Include="include\astra\CudaFilteredBackProjectionAlgorithm.h" />
     <ClInclude Include="include\astra\CudaForwardProjectionAlgorithm.h" />
     <ClInclude Include="include\astra\CudaForwardProjectionAlgorithm3D.h" />
+    <ClInclude Include="include\astra\CudaForwardProjectionAlgorithm3D_DF.h" />
     <ClInclude Include="include\astra\CudaProjector2D.h" />
     <ClInclude Include="include\astra\CudaProjector3D.h" />
     <ClInclude Include="include\astra\CudaReconstructionAlgorithm2D.h" />
