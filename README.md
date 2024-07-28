@@ -37,7 +37,7 @@ This will install Astra into your current Python environment.
 
 #### For MATLAB
 
--- MATLAB implementation has not been tested for nonrigid package -- 
+-- This has not been tested for nonrigid package -- 
 
 Requirements: g++, CUDA (10.2 or higher), MATLAB (R2012a or higher)
 
@@ -70,6 +70,8 @@ MATLAB.
 
 #### As a C++ library
 
+-- This has not been tested for nonrigid package -- 
+
 Requirements: g++, CUDA (10.2 or higher)
 
 ```
@@ -84,6 +86,8 @@ This will install the Astra library and C++ headers.
 
 
 ### macOS, from source
+
+-- This has not been tested for nonrigid package -- 
 
 Use the Homebrew package manager to install boost, libtool, autoconf, automake.
 
@@ -100,6 +104,8 @@ make install
 ```
 
 ### Windows, from source using Visual Studio 2017
+
+-- This has not been tested for nonrigid package -- 
 
 Requirements: Visual Studio 2017 (full or community), boost (recent),
               CUDA (10.2 or higher), MATLAB (R2012a or higher)
@@ -153,6 +159,9 @@ Additionally, if you use parallel beam GPU code, we would appreciate it if you w
 
 W. J. Palenstijn, K J. Batenburg, and J. Sijbers, "Performance improvements for iterative electron tomography reconstruction using graphics processing units (GPUs)", Journal of Structural Biology, vol. 176, issue 2, pp. 250-253, 2011, http://dx.doi.org/10.1016/j.jsb.2011.07.017
 
+If you use the nonrigid computed tomography code, we would appreciate it if you would refer to the following paper:
+
+M. Odstrcil, M. Holler, J. Raabe, A. Sepe, X. Sheng, S. Vignolini, C. G. Schroer, and M. Guizar-Sicairos. "Ab initio nonrigid X-ray nanotomography." Nature communications 10, no. 1 (2019): 2600, https://doi.org/10.1038/s41467-019-10670-7
 
 ## License
 
