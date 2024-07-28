@@ -17,33 +17,27 @@ See the MATLAB and Python code samples in `samples/` directory and on http://www
 
 ## Installation instructions
 
-### Windows/Linux, using conda for Python packages
-
-Requirements: [conda](http://conda.pydata.org/) Python environment, with 64 bit Python 3.9-3.12.
-
-Conda packages for ASTRA Toolbox are available from the `astra-toolbox` channel, whereas CUDA-related packages can be installed from `nvidia` channel.
-To install ASTRA into the desired conda environment, run:
-
-```
-conda install astra-toolbox -c astra-toolbox -c nvidia
-```
-
-We also provide development packages:
-
-```
-conda install astra-toolbox -c astra-toolbox/label/dev -c nvidia
-```
-
-### Windows, binary
-
-Add the mex and tools subdirectories to your MATLAB path, or install the Python
-wheel using pip. We require the Microsoft Visual Studio 2017 redistributable
-package. If this is not already installed on your system, it is included as
-vc_redist.x64.exe in the ASTRA zip file.
-
 ### Linux, from source
 
+#### For Python
+
+Requirements: g++, CUDA (10.2 or higher), Python (3.x), Cython, six, scipy
+
+```
+cd build/linux
+./autogen.sh   # when building a git version
+./configure --with-cuda=/usr/local/cuda \
+            --with-python \
+            --with-install-type=module
+make
+make install
+```
+
+This will install Astra into your current Python environment.
+
 #### For MATLAB
+
+-- MATLAB implementation has not been tested for nonrigid package -- 
 
 Requirements: g++, CUDA (10.2 or higher), MATLAB (R2012a or higher)
 
@@ -73,22 +67,6 @@ by deleting the version of libstdc++ supplied by MATLAB in
 MATLAB_PATH/bin/glnx86 or MATLAB_PATH/bin/glnxa64 (at your own risk),
 or setting `LD_PRELOAD=/usr/lib64/libstdc++.so.6` (or similar) when starting
 MATLAB.
-
-#### For Python
-
-Requirements: g++, CUDA (10.2 or higher), Python (3.x), Cython, six, scipy
-
-```
-cd build/linux
-./autogen.sh   # when building a git version
-./configure --with-cuda=/usr/local/cuda \
-            --with-python \
-            --with-install-type=module
-make
-make install
-```
-
-This will install Astra into your current Python environment.
 
 #### As a C++ library
 
